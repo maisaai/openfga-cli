@@ -1,0 +1,203 @@
+# ==============================================================================
+#    DO NOT EDIT — Auto-generated from maisaai/maisa-ci-cd
+#    Any manual changes will be overwritten on the next Terraform apply.
+# ==============================================================================
+#
+# Image build for the PUBLIC upstream forks (openfga, openfga-cli).
+#
+# This workflow is deliberately SELF-CONTAINED — it calls no maisa-ci-cd
+# reusable, and it needs no secret. Three constraints force that shape, all of
+# them consequences of the repo being public:
+#
+#   1. No organization secrets. Every secret in the maisaai org is
+#      visibility=private, so a public repo resolves ZERO of them (verified:
+#      GET /repos/maisaai/openfga/actions/organization-secrets -> 0, the same
+#      call on a private repo -> 24). push-image.yaml reads WIZ_CLIENT_ID,
+#      WIZ_CLIENT_SECRET, SHARED_ACCOUNT_AWS_ROLE_ARN, DOCKERHUB_*, HF_TOKEN and
+#      APP_ID/APP_PRIVATE_KEY, so it cannot run here at all.
+#   2. AWS access therefore comes from OIDC, which needs no secret. The role is
+#      GitHubActionsPublicForkECRRole — NOT the fleet-wide GitHubActionsECRRole,
+#      which these two repos are explicitly denied. That one grants ECR write on
+#      Resource "*" (every repository in the account, clients/maisa included),
+#      which must not be reachable from a public repo: an `issue_comment`
+#      workflow can be triggered by anyone and can request `id-token: write`, so
+#      no secret is needed to obtain a token. This role can only write to these
+#      forks' own repositories. The ARN below is an identifier, not a
+#      credential — the trust policy is the control.
+#   3. GitHub-hosted runners, not the ARC fleet. Every org runner group has
+#      allows_public_repositories=false, and that is the correct posture: a
+#      public repo must not get a runner inside our cluster. Hosted runners are
+#      free and unlimited on public repos and both architectures are native, so
+#      there is no QEMU here either.
+#
+# No Wiz scan, for the same secret reason. The ECR repositories are created with
+# scan_on_push = true, so images are still scanned for CVEs on arrival.
+#
+# Trigger: only "v*-maisa.*" tags. A plain "vX.Y.Z" is the shape of every
+# UPSTREAM release tag, and a fork syncs upstream's tags — firing on those would
+# publish an unpatched upstream build as if it were ours. Pushing a tag requires
+# write access, which is also what keeps this workflow out of reach of outside
+# contributors: `pull_request` from a fork gets no secrets and no id-token.
+#
+# Tag scheme: v<upstream version>-maisa.<N>, e.g. v1.19.0-maisa.1 for the first
+# Maisa build on top of upstream v1.19.0. Valid semver, so it satisfies the
+# `tags` ruleset and the internal/clients deployment tag patterns, and it sorts
+# after the tag it derives from. The leading "v" is stripped for the image tag.
+name: Maisa image
+run-name: Publish Maisa image for ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*-maisa.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v*-maisa.* tag to (re)build"
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+# The registry, role and region are the same fleet-wide constants push-image.yaml
+# hardcodes. They are identifiers, not credentials: assuming the role still
+# requires a GitHub OIDC token whose subject matches repo:maisaai/*, which only
+# a workflow in this org can obtain. Note this file is PUBLIC, so treat these as
+# published — do not add anything here that is actually secret.
+env:
+  REGISTRY: 876622473319.dkr.ecr.eu-west-1.amazonaws.com
+  ROLE_ARN: arn:aws:iam::876622473319:role/GitHubActionsPublicForkECRRole
+  AWS_REGION: eu-west-1
+  IMAGE: maisa-openfga-cli
+  DOCKERFILE: .dev.Dockerfile
+
+jobs:
+  # Resolve the ref and version once, so the matrix legs and the manifest job
+  # cannot disagree about what they are building.
+  resolve:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.v.outputs.ref }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - name: Resolve tag and version
+        id: v
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.tag || github.ref_name }}"
+          case "$REF" in
+            v*-maisa.*) ;;
+            *) echo "::error::'$REF' is not a v*-maisa.* tag. A bare upstream tag must never publish a Maisa image." ; exit 1 ;;
+          esac
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "version=${REF#v}" >> "$GITHUB_OUTPUT"
+          echo "Building \`$REF\` as \`${REF#v}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # One native build per architecture. The upstream Dockerfiles compile Go, so
+  # emulating arm64 under QEMU in a single multi-platform build would cost
+  # minutes per run for no benefit when a native arm64 runner is free.
+  # Each leg pushes its own "<version>-<arch>" tag into BOTH namespaces; the
+  # index is assembled from those tags below. Per-arch tags are kept (rather
+  # than pushing by digest) so a future retention rule has something to key on,
+  # matching what local-runner-image.yaml already does in this repo.
+  build:
+    name: Build maisa-openfga-cli ${{ matrix.arch }}
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      id-token: write # OIDC to assume the ECR role
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout ${{ needs.resolve.outputs.ref }}
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build and push ${{ matrix.arch }}
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          provenance: false # keeps the index free of extra child manifests
+          tags: |
+            ${{ env.REGISTRY }}/internal/${{ env.IMAGE }}:${{ needs.resolve.outputs.version }}-${{ matrix.arch }}
+            ${{ env.REGISTRY }}/clients/${{ env.IMAGE }}:${{ needs.resolve.outputs.version }}-${{ matrix.arch }}
+          # No build cache on purpose. type=gha would be the obvious win, but a
+          # release image that reaches clients/ should be built from source
+          # every time: on a public repo the Actions cache is a documented
+          # poisoning vector, and a Go build here is cheap enough that the cache
+          # is not worth widening the trusted input set for.
+
+  # Assemble one multi-arch index per namespace from the per-arch tags. Runs
+  # once both legs succeeded, so a half-published index is not possible.
+  manifest:
+    name: Publish manifests
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    # No GitHub environment on purpose. The only ref that can reach this
+    # workflow is a v*-maisa.* tag, and creating a tag already requires write
+    # access plus a name the `tags` ruleset accepts — a deployment branch policy
+    # on the same ref would gate nothing further.
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Create multi-arch manifests
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          for ns in internal clients; do
+            REPO="$REGISTRY/$ns/$IMAGE"
+            docker buildx imagetools create \
+              --tag "$REPO:$VERSION" \
+              "$REPO:$VERSION-amd64" \
+              "$REPO:$VERSION-arm64"
+            echo "- Published \`$ns/$IMAGE:$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Show published digests
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          for ns in internal clients; do
+            docker buildx imagetools inspect "$REGISTRY/$ns/$IMAGE:$VERSION" --format '{{json .Manifest.Digest}}'
+          done
