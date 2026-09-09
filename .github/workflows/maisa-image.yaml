@@ -35,14 +35,26 @@
 #
 # Trigger: only "v*-maisa.*" tags. A plain "vX.Y.Z" is the shape of every
 # UPSTREAM release tag, and a fork syncs upstream's tags — firing on those would
-# publish an unpatched upstream build as if it were ours. Pushing a tag requires
-# write access, which is also what keeps this workflow out of reach of outside
-# contributors: `pull_request` from a fork gets no secrets and no id-token.
+# publish an unpatched upstream build as if it were ours.
+#
+# Both triggers here require write access (pushing a tag, dispatching), which is
+# what keeps this workflow out of reach of outside contributors. The protections
+# that matter for the OTHER, inherited workflows live elsewhere: the
+# fork-pr-contributor-approval setting, and the deletion of upstream's
+# claude-code-review.yaml. See the fork section in AGENTS.md.
 #
 # Tag scheme: v<upstream version>-maisa.<N>, e.g. v1.19.0-maisa.1 for the first
 # Maisa build on top of upstream v1.19.0. Valid semver, so it satisfies the
-# `tags` ruleset and the internal/clients deployment tag patterns, and it sorts
-# after the tag it derives from. The leading "v" is stripped for the image tag.
+# `tags` ruleset, and it sorts after the tag it derives from. The leading "v" is
+# stripped for the image tag.
+#
+# NOT A RE-RUN MECHANISM. internal/ and clients/ are IMMUTABLE, so pushing any
+# tag twice fails with ImageTagAlreadyExistsException — including the per-arch
+# tags this workflow pushes first. A build that dies half way therefore cannot
+# be retried: cut -maisa.<N+1> instead. `workflow_dispatch` exists for the case
+# where the tag exists but its push event never produced a run (Actions disabled
+# at the time, a listener outage), not for rebuilding a version that already
+# published.
 name: Maisa image
 run-name: Publish Maisa image for ${{ github.ref_name }}
 
@@ -53,7 +65,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing v*-maisa.* tag to (re)build"
+        description: "v*-maisa.* tag whose push event produced no run. NOT for rebuilding an already-published version (immutable tags)."
         required: true
         type: string
 
