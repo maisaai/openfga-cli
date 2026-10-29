@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.2](https://github.com/openfga/cli/compare/v0.8.1...v0.8.2) (2026-10-15)
+
+
+### Added
+
+* **mapping:** add sync command ([#774](https://github.com/openfga/cli/issues/774)) ([9f28d9e](https://github.com/openfga/cli/commit/9f28d9e15ca578f89c3c0f91c1e5ef1626ad9cfd))
+
+
+### Changed
+
+* **mapping:** deprecate run in favour of evaluate ([#775](https://github.com/openfga/cli/issues/775)) ([5802421](https://github.com/openfga/cli/commit/5802421bbbe352f91b2a68c483b37d69b8f5288b))
+
+## [0.8.1](https://github.com/openfga/cli/compare/v0.8.0...v0.8.1) (2026-09-24)
+
+
+### Added
+
+* support for dynamic conditions ([#768](https://github.com/openfga/cli/issues/768)) ([5fae37b](https://github.com/openfga/cli/commit/5fae37b15b352fbbaf65f0816530bb9697700dda))
+
+
+## [0.8.0](https://github.com/openfga/cli/compare/v0.7.20...v0.8.0) (2026-09-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* File references that resolve outside the store file's directory are rejected by default. Pass `--allow-external-files` to `fga store import` or `fga model test` to opt back in.
+
+### Added
+
+* add --name filter to store list ([#745](https://github.com/openfga/cli/issues/745)) ([4e0b6f6](https://github.com/openfga/cli/commit/4e0b6f6913d91484fb09ae7ea3ff4c8f5378708a))
+* add fga mapping init command ([#755](https://github.com/openfga/cli/issues/755)) ([364fae5](https://github.com/openfga/cli/commit/364fae572dbe6c48588add35a69eb8464091a5f5))
+* add fga mapping run command ([#761](https://github.com/openfga/cli/issues/761)) ([efaa114](https://github.com/openfga/cli/commit/efaa1149d8759608cf143689b0055718dfac01d8))
+* add fga mapping test command ([#754](https://github.com/openfga/cli/issues/754)) ([869e1cd](https://github.com/openfga/cli/commit/869e1cd2fb2a5a503ef0ac7bcdac5391fe8ffc9f))
+* add fga mapping validate command ([#753](https://github.com/openfga/cli/issues/753)) ([3e643cc](https://github.com/openfga/cli/commit/3e643cc838395e0276753e7c501a62c7d1ad01d5))
+* **mapping:** add interactive explorer to mapping run ([#763](https://github.com/openfga/cli/issues/763)) ([03a3e65](https://github.com/openfga/cli/commit/03a3e65dcad5afe9f6008ac8c6d8b10f760de120))
+* update language package for $expression support ([#762](https://github.com/openfga/cli/issues/762)) ([79bce9b](https://github.com/openfga/cli/commit/79bce9bb219d4670ef791091bb863958f806e482))
+
+
+### Fixed
+
+* contain store YAML file references to the store file's directory ([#737](https://github.com/openfga/cli/issues/737)) ([cef729e](https://github.com/openfga/cli/commit/cef729e5d1a473021796f4d76ac003dad8941c36))
+* skip non-regular files matched by glob in model test ([#742](https://github.com/openfga/cli/issues/742)) ([73d22a2](https://github.com/openfga/cli/commit/73d22a21263401cdab7044d0b2ef65fe2f0794e4))
+* **tuple:** inline pointer literal to satisfy modernize linter ([#757](https://github.com/openfga/cli/issues/757)) ([ba5d115](https://github.com/openfga/cli/commit/ba5d115a60abcc92ce95ef0839d73994ff41778a))
+
 ## [0.7.20](https://github.com/openfga/cli/compare/v0.7.19...v0.7.20) (2026-08-10)
 
 

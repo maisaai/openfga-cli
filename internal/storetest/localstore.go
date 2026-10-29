@@ -5,9 +5,10 @@ import (
 	"math"
 
 	"github.com/oklog/ulid/v2"
-	pb "github.com/openfga/api/proto/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/go-sdk/client"
 	"github.com/openfga/openfga/pkg/server"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/memory"
 
 	"github.com/openfga/cli/internal/authorizationmodel"
@@ -18,7 +19,7 @@ const writeMaxChunkSize = 40
 func initLocalStore(
 	ctx context.Context,
 	fgaServer *server.Server,
-	model *pb.AuthorizationModel,
+	model *openfgav1.AuthorizationModel,
 	testTuples []client.ClientContextualTupleKey,
 ) (*string, *string, error) {
 	var modelID *string
@@ -30,10 +31,10 @@ func initLocalStore(
 		return nil, nil, err
 	}
 
-	var authModelWriteReq *pb.WriteAuthorizationModelRequest
+	var authModelWriteReq *openfgav1.WriteAuthorizationModelRequest
 
 	if model != nil {
-		authModelWriteReq = &pb.WriteAuthorizationModelRequest{
+		authModelWriteReq = &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:         storeID,
 			TypeDefinitions: model.GetTypeDefinitions(),
 			SchemaVersion:   model.GetSchemaVersion(),
@@ -54,11 +55,11 @@ func initLocalStore(
 	if tuplesLength > 0 {
 		for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 			end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-			writeChunk := (tuples)[i:end]
+			writeChunk := tuples[i:end]
 
-			writeRequest := &pb.WriteRequest{
+			writeRequest := &openfgav1.WriteRequest{
 				StoreId: storeID,
-				Writes:  &pb.WriteRequestWrites{TupleKeys: writeChunk},
+				Writes:  &openfgav1.WriteRequestWrites{TupleKeys: writeChunk},
 			}
 
 			_, err := fgaServer.Write(ctx, writeRequest)
@@ -93,6 +94,7 @@ func getLocalServerModelAndTuples(
 
 	fgaServer, err := server.NewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithExperimentals(serverconfig.ExperimentalInlineExpressions),
 	)
 	if err != nil {
 		return nil, nil, stopServerFn, err //nolint:wrapcheck
