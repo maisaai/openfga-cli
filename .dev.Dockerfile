@@ -1,8 +1,7 @@
 # Maisa fork: builder pinned to a chainguard/go digest with Go >= 1.27.4
-# (upstream's v0.8.2 release binary is built with go1.27.2, CVE-2026-111943;
-# go1.27.3 carries CVE-2026-97054), -trimpath and upstream's "-s -w" ldflags,
-# and the Apache-2.0 LICENSE shipped at /LICENSE next to /fga, the layout
-# maisa-helm-tools copies from.
+# (go1.27.2 has CVE-2026-111943 and go1.27.3 CVE-2026-97054), -trimpath and
+# upstream's "-s -w" ldflags, and the Apache-2.0 LICENSE shipped at /LICENSE
+# next to /fga, the layout maisa-helm-tools copies from.
 FROM cgr.dev/chainguard/go:latest@sha256:b49aac675fb8613c532b0dd60492f2afa8af358590817d8cede2e5c4c47bd0e3 AS builder
 
 WORKDIR /app
